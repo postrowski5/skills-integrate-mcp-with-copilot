@@ -1,0 +1,9 @@
+{
+  "users": [
+    {
+      "username": "teacher",
+      "password": "changeme",
+      "token": "admintoken-LOCAL-CHANGEME"
+    }
+  ]
+}

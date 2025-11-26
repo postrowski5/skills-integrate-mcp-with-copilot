@@ -5,10 +5,11 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
 import os
+import json
 from pathlib import Path
 
 app = FastAPI(title="Mergington High School API",
@@ -88,6 +89,49 @@ def get_activities():
     return activities
 
 
+# --- Admin support (minimal) -------------------------------------------------
+# Load admins from a JSON file (simple exercise-friendly format)
+admins_file = current_dir / "data" / "admins.json"
+admins = {}
+if admins_file.exists():
+    try:
+        with open(admins_file, "r", encoding="utf-8") as f:
+            admins = json.load(f)
+    except Exception:
+        admins = {}
+
+
+def _validate_admin_token(token: str) -> bool:
+    if not token or not admins:
+        return False
+    # admins expected format: {"users": [{"username": "teacher", "password": "pass", "token": "..."}, ...]}
+    for u in admins.get("users", []):
+        if u.get("token") == token:
+            return True
+    return False
+
+
+@app.post("/admin/login")
+def admin_login(payload: dict):
+    """Simple login: POST {"username":"...","password":"..."} -> {"token":"..."}
+
+    This is intentionally minimal for the exercise. Do not use in production.
+    """
+    if not admins:
+        raise HTTPException(status_code=500, detail="Admin configuration not available")
+
+    username = payload.get("username")
+    password = payload.get("password")
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="username and password required")
+
+    for u in admins.get("users", []):
+        if u.get("username") == username and u.get("password") == password:
+            return {"token": u.get("token")}
+
+    raise HTTPException(status_code=401, detail="Invalid credentials")
+
+
 @app.post("/activities/{activity_name}/signup")
 def signup_for_activity(activity_name: str, email: str):
     """Sign up a student for an activity"""
@@ -110,8 +154,11 @@ def signup_for_activity(activity_name: str, email: str):
     return {"message": f"Signed up {email} for {activity_name}"}
 
 
+from fastapi import Header
+
+
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
+def unregister_from_activity(activity_name: str, email: str, x_admin_token: str | None = Header(default=None), admin_token: str | None = None):
     """Unregister a student from an activity"""
     # Validate activity exists
     if activity_name not in activities:
@@ -126,6 +173,10 @@ def unregister_from_activity(activity_name: str, email: str):
             status_code=400,
             detail="Student is not signed up for this activity"
         )
+    # Validate admin token provided either via header 'X-Admin-Token' or query param 'admin_token'
+    token = x_admin_token or admin_token
+    if not _validate_admin_token(token):
+        raise HTTPException(status_code=403, detail="Admin privileges required to unregister students")
 
     # Remove student
     activity["participants"].remove(email)
