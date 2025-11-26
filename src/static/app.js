@@ -3,6 +3,63 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const adminLoginBtn = document.getElementById("admin-login-btn");
+  const adminLogoutBtn = document.getElementById("admin-logout-btn");
+  const adminUserSpan = document.getElementById("admin-user");
+
+  let adminToken = localStorage.getItem("adminToken") || null;
+
+  function updateAdminUI() {
+    if (adminToken) {
+      adminLoginBtn.classList.add("hidden");
+      adminLogoutBtn.classList.remove("hidden");
+      adminUserSpan.classList.remove("hidden");
+      adminUserSpan.textContent = " (admin)";
+    } else {
+      adminLoginBtn.classList.remove("hidden");
+      adminLogoutBtn.classList.add("hidden");
+      adminUserSpan.classList.add("hidden");
+      adminUserSpan.textContent = "";
+    }
+  }
+
+  updateAdminUI();
+
+  adminLoginBtn?.addEventListener("click", async () => {
+    const username = prompt("Admin username:");
+    if (!username) return;
+    const password = prompt("Admin password:");
+    if (!password) return;
+
+    try {
+      const res = await fetch("/admin/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        adminToken = data.token;
+        localStorage.setItem("adminToken", adminToken);
+        updateAdminUI();
+        fetchActivities();
+      } else {
+        const err = await res.json();
+        alert(err.detail || "Login failed");
+      }
+    } catch (e) {
+      console.error(e);
+      alert("Login failed");
+    }
+  });
+
+  adminLogoutBtn?.addEventListener("click", () => {
+    adminToken = null;
+    localStorage.removeItem("adminToken");
+    updateAdminUI();
+    fetchActivities();
+  });
 
   // Function to fetch activities from API
   async function fetchActivities() {
@@ -21,17 +78,19 @@ document.addEventListener("DOMContentLoaded", () => {
         const spotsLeft =
           details.max_participants - details.participants.length;
 
-        // Create participants HTML with delete icons instead of bullet points
+        // Create participants HTML with delete icons only shown to admins
         const participantsHTML =
           details.participants.length > 0
             ? `<div class="participants-section">
               <h5>Participants:</h5>
               <ul class="participants-list">
                 ${details.participants
-                  .map(
-                    (email) =>
-                      `<li><span class="participant-email">${email}</span><button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button></li>`
-                  )
+                  .map((email) => {
+                    const deleteBtn = adminToken
+                      ? `<button class="delete-btn" data-activity="${name}" data-email="${email}">❌</button>`
+                      : "";
+                    return `<li><span class="participant-email">${email}</span>${deleteBtn}</li>`;
+                  })
                   .join("")}
               </ul>
             </div>`
@@ -56,10 +115,13 @@ document.addEventListener("DOMContentLoaded", () => {
         activitySelect.appendChild(option);
       });
 
-      // Add event listeners to delete buttons
-      document.querySelectorAll(".delete-btn").forEach((button) => {
-        button.addEventListener("click", handleUnregister);
-      });
+  // Add event listeners to delete and register buttons (delete only appears for admins)
+  document.querySelectorAll(".delete-btn").forEach((button) => {
+    button.addEventListener("click", handleUnregister);
+  });
+  document.querySelectorAll(".register-btn").forEach((button) => {
+    button.addEventListener("click", handleRegister);
+  });
     } catch (error) {
       activitiesList.innerHTML =
         "<p>Failed to load activities. Please try again later.</p>";
@@ -74,12 +136,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const email = button.getAttribute("data-email");
 
     try {
+      const headers = {};
+      if (adminToken) headers["X-Admin-Token"] = adminToken;
       const response = await fetch(
-        `/activities/${encodeURIComponent(
-          activity
-        )}/unregister?email=${encodeURIComponent(email)}`,
+        `/activities/${encodeURIComponent(activity)}/unregister?email=${encodeURIComponent(email)}`,
         {
           method: "DELETE",
+          headers,
         }
       );
 
@@ -107,6 +170,51 @@ document.addEventListener("DOMContentLoaded", () => {
       messageDiv.className = "error";
       messageDiv.classList.remove("hidden");
       console.error("Error unregistering:", error);
+    }
+  }
+
+  // Handle register functionality (prompt for email)
+  async function handleRegister(event) {
+    const button = event.currentTarget;
+    const activity = button.getAttribute("data-activity");
+
+    const email = prompt("Enter student email to register:");
+    if (!email) return;
+
+    try {
+      const response = await fetch(
+        `/activities/${encodeURIComponent(activity)}/signup?email=${encodeURIComponent(
+          email
+        )}`,
+        {
+          method: "POST",
+        }
+      );
+
+      const result = await response.json();
+
+      if (response.ok) {
+        messageDiv.textContent = result.message;
+        messageDiv.className = "message success";
+
+        // Refresh activities list to show updated participants
+        fetchActivities();
+      } else {
+        messageDiv.textContent = result.detail || "An error occurred";
+        messageDiv.className = "message error";
+      }
+
+      messageDiv.classList.remove("hidden");
+
+      // Hide message after 5 seconds
+      setTimeout(() => {
+        messageDiv.classList.add("hidden");
+      }, 5000);
+    } catch (error) {
+      messageDiv.textContent = "Failed to sign up. Please try again.";
+      messageDiv.className = "message error";
+      messageDiv.classList.remove("hidden");
+      console.error("Error signing up:", error);
     }
   }
 
