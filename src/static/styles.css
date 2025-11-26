@@ -30,14 +30,14 @@ header h1 {
 
 main {
   display: flex;
-  flex-wrap: wrap;
-  gap: 30px;
-  justify-content: center;
+  flex-direction: column;
+  gap: 20px;
 }
 
 @media (min-width: 768px) {
   main {
-    grid-template-columns: 2fr 1fr;
+    flex-direction: column;
+    gap: 24px;
   }
 }
 
@@ -68,6 +68,27 @@ section h3 {
 .activity-card h4 {
   margin-bottom: 10px;
   color: #0066cc;
+}
+
+.register-btn {
+  display: inline-block;
+  margin: 8px 0 12px 0;
+  background-color: #1976d2;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.register-btn:hover {
+  background-color: #1565c0;
+}
+
+.notice {
+  margin: 8px 0 12px 0;
+  color: #333;
+  font-style: italic;
 }
 
 .activity-card p {
